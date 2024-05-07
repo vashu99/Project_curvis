@@ -1,0 +1,24 @@
+{
+    "use_case_id": "patient_eligibility_verification",
+    "use_case_parameters": {
+      "cuvris_agent_title": "amy",
+      "provider_npi": "1234567893",
+      "provider_tax_id": "",
+      "provider_name": "Dr. Lucas Green",
+      "member_policy_id_number": "JPU666X15903",
+      "member_first_name": "Michael",
+      "member_last_name": "Johnson",
+      "member_phone_number": "",
+      "member_address_line_1": "",
+      "member_address_line_2": "",
+      "member_state": "",
+      "member_city": "",
+      "member_zip_code": "",
+      "member_pronouns": "",
+      "claim_number": "",
+      "callback_number": "",
+      "insurance_number": "",
+      "provider_state": "Illinois"
+    }
+  }
+  

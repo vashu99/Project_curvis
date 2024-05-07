@@ -1,7 +1,10 @@
 import json
 import os
 from dotenv import load_dotenv
-from openai import OpenAI
+from fastapi.exceptions import HTTPException
+from uuid import uuid4
+
+
 from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import JSONResponse, PlainTextResponse
 from fastapi.responses import JSONResponse, PlainTextResponse
@@ -41,20 +44,122 @@ insurance_number=""
 provider_state="Illinois"
 # twilio_client.create_phone_number(213, os.environ['RETELL_AGENT_ID'])
 # twilio_client.delete_phone_number("+12133548310")
+# # # twilio_client.register_phone_agent("+14154750418", os.environ['RETELL_AGENT_ID'])
+# twilio_client.create_phone_call("+447700153715", "+917303571379", os.environ['RETELL_AGENT_ID'])
+
+from pydantic import BaseModel, Field
+
+class UseCaseParameters(BaseModel):
+    cuvris_agent_title: str
+    provider_npi: str = Field(..., min_length=10, max_length=10)  # Example of using Field for validation
+    provider_tax_id: str
+    provider_name: str
+    member_policy_id_number: str
+    member_first_name: str
+    member_last_name: str
+    member_phone_number: str
+    member_address_line_1: str
+    member_address_line_2: str
+    member_state: str
+    member_city: str
+    member_zip_code: str
+    member_pronouns: str
+    claim_number: str
+    callback_number: str
+    insurance_number: str
+    provider_state: str
+
+class ConversationStartRequest(BaseModel):
+    use_case_id: str
+    use_case_parameters: UseCaseParameters
+
+
+
+
+
+class QueryRequest(BaseModel):
+    conversation_id: str
+    query_text: str
+
+class QueryResponse(BaseModel):
+    query_response_text: str
+    query_response_time: str
+    conversation_status: str
+
+
+conversations = {}
+@app.post("/conversation", response_model=dict)
+async def start_conversation(request: ConversationStartRequest):
+    conversation_id = str(uuid4())
+    conversations[conversation_id] = {
+        "use_case_id": request.use_case_id,
+        "parameters": request.use_case_parameters.dict(),
+        "status": "open",
+        "messages": []
+    }
+
+    # Trigger a phone call to the agent using Twilio
+    try:
+        call_response = twilio_client.create_phone_call("+447700153715", "+919718028800", os.environ['RETELL_AGENT_ID'])
+        print(f"Call initiated successfully: {call_response}")
+    except Exception as e:
+        print(f"Failed to initiate call: {e}")
+        raise HTTPException(status_code=500, detail="Failed to initiate phone call")
+
+    return {"conversation_id": conversation_id}
+
+
+# import time
+
+# @app.post("/conversation/query", response_model=QueryResponse)
+# async def query_conversation(request: QueryRequest):
+#     start_time = time.time()
+
+#     # Check if the conversation exists and is open
+#     conversation = conversations.get(request.conversation_id)
+#     if not conversation:
+#         raise HTTPException(status_code=404, detail="Conversation not found")
+#     if conversation["status"] == "closed":
+#         raise HTTPException(status_code=400, detail="Conversation is closed")
+
+#     # Here you might simulate a response or integrate with your AI logic
+#     # Simulated response for demonstration
+#     response_text = "Simulated response to the query: " + request.query_text
+#     response_time = f"{time.time() - start_time:.2f} seconds"
+
+#     # Update the conversation history (if needed)
+#     conversation["messages"].append({
+#         "query": request.query_text,
+#         "response": response_text
+#     })
+
+#     # Optionally, update the status of the conversation based on some logic
+#     # For example, conversation["status"] = "closed" if some condition is met
+
+#     return QueryResponse(
+#         query_response_text=response_text,
+#         query_response_time=response_time,
+#         conversation_status=conversation["status"]
+#     )
+
+
+
+# twilio_client = TwilioClient()
+
+# twilio_client.create_phone_number(213, os.environ['RETELL_AGENT_ID'])
+# twilio_client.delete_phone_number("+12133548310")
 # twilio_client.register_phone_agent("+14154750418", os.environ['RETELL_AGENT_ID'])
-twilio_client.create_phone_call("+447700153715", "+917303571379", os.environ['RETELL_AGENT_ID'])
-
-
+# twilio_client.create_phone_call("+14154750418", "+13123156212", os.environ['RETELL_AGENT_ID'])
 
 @app.post("/twilio-voice-webhook/{agent_id_path}")
 async def handle_twilio_voice_webhook(request: Request, agent_id_path: str):
     try:
         # Check if it is machine
         post_data = await request.form()
-        # if 'AnsweredBy' in post_data and post_data['AnsweredBy'] == "machine_start":
-        #     twilio_client.end_call(post_data['CallSid'])
-        #     return PlainTextResponse("")
-        if 'AnsweredBy' in post_data:
+        if 'AnsweredBy' in post_data and post_data['AnsweredBy'] == "machine_start":
+            twilio_client.end_call(post_data['CallSid'])
+            return PlainTextResponse("")
+        elif 'AnsweredBy' in post_data:
             return PlainTextResponse("") 
 
         call_response = twilio_client.retell.register_call(operations.RegisterCallRequestBody(
@@ -64,16 +169,41 @@ async def handle_twilio_voice_webhook(request: Request, agent_id_path: str):
             sample_rate=8000
         ))
         if call_response.call_detail:
-            print(call_response)
-            print(call_response.call_detail)
             response = VoiceResponse()
             start = response.connect()
             start.stream(url=f"wss://api.retellai.com/audio-websocket/{call_response.call_detail.call_id}")
-            print(PlainTextResponse(str(response), media_type='text/xml'))
             return PlainTextResponse(str(response), media_type='text/xml')
     except Exception as err:
         print(f"Error in twilio voice webhook: {err}")
         return JSONResponse(status_code=500, content={"message": "Internal Server Error"})
+
+
+
+# @app.websocket("/llm-websocket/{call_id}")
+# async def websocket_handler(websocket: WebSocket, call_id: str):
+#     await websocket.accept()
+#     print(f"Handle llm ws for: {call_id}")
+    
+#     # conversation = conversations.get(request.conversation_id)
+#     # # Extract parameters
+#     # use_case_parameters = conversations[call_id]['parameters']
+#     # use_case_id = conversations[call_id]['use_case_id']
+
+#     # Initialize LlmClient with the extracted parameters
+#     llm_client = LlmClient()
+
+#     # Send first message to signal readiness of server
+#     response_id = 0
+#     first_event = llm_client.draft_begin_message()
+#     await websocket.send_text(json.dumps({"message": first_event}))
+
+#     async def stream_response(request):
+#         nonlocal response_id
+#         for event in llm_client.draft_response(request):
+#             await websocket.send_text(json.dumps(event))
+#             if request['response_id'] < response_id:
+#                 return  # New response needed, abandon this one
+            
 
 
 @app.websocket("/llm-websocket/{call_id}")
