@@ -4,6 +4,8 @@ from dotenv import load_dotenv
 from fastapi.exceptions import HTTPException
 from uuid import uuid4
 
+load_dotenv()
+from azure.cosmos import CosmosClient, PartitionKey, exceptions
 
 from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import JSONResponse, PlainTextResponse
@@ -22,26 +24,19 @@ load_dotenv(override=True)
 
 app = FastAPI()
 
+url = os.environ['ACCOUNT_HOST']
+key = os.environ['ACCOUNT_KEY']
+# key = os.environ['ACCOUNT_KEY']
+client = CosmosClient(url, credential=key)
+database_name = 'CuvrisDB'
+container_name = 'Conversations'
+database = client.get_database_client(database_name)
+container = database.get_container_client(container_name)
+
+
+
 twilio_client = TwilioClient()
-use_case_id = "patient_eligibility_verification"
-cuvris_agent_title = "amy"
-provider_npi="1234567893"
-provider_tax_id=""
-provider_name="Dr. Lucas Green"
-member_policy_id_number="JPU666X15903"
-member_first_name="Michael"
-member_last_name="Johnson"
-member_phone_number=""
-member_address_line_1 = ""
-member_address_line_2 = ""
-member_state=""
-member_city=""
-member_zip_code=""
-member_pronouns=""
-claim_number=""
-callback_number=""
-insurance_number=""
-provider_state="Illinois"
+
 # twilio_client.create_phone_number(213, os.environ['RETELL_AGENT_ID'])
 # twilio_client.delete_phone_number("+12133548310")
 # # # twilio_client.register_phone_agent("+14154750418", os.environ['RETELL_AGENT_ID'])
@@ -50,6 +45,7 @@ provider_state="Illinois"
 from pydantic import BaseModel, Field
 
 class UseCaseParameters(BaseModel):
+
     cuvris_agent_title: str
     provider_npi: str = Field(..., min_length=10, max_length=10)  # Example of using Field for validation
     provider_tax_id: str
@@ -68,6 +64,8 @@ class UseCaseParameters(BaseModel):
     callback_number: str
     insurance_number: str
     provider_state: str
+
+
 
 class ConversationStartRequest(BaseModel):
     use_case_id: str
@@ -88,25 +86,81 @@ class QueryResponse(BaseModel):
 
 
 conversations = {}
+
 @app.post("/conversation", response_model=dict)
 async def start_conversation(request: ConversationStartRequest):
     conversation_id = str(uuid4())
-    conversations[conversation_id] = {
+    conversation_data = {
+        "id": conversation_id,
         "use_case_id": request.use_case_id,
         "parameters": request.use_case_parameters.dict(),
         "status": "open",
-        "messages": []
+        "messages": [],
+        "call_id": None
     }
+    # container.upsert_item(conversation_data)
 
-    # Trigger a phone call to the agent using Twilio
+        # Trigger a phone call to the agent using Twilio
     try:
-        call_response = twilio_client.create_phone_call("+447700153715", "+919718028800", os.environ['RETELL_AGENT_ID'])
+        call_response = twilio_client.create_phone_call("+447700153715", "+917303571379", os.environ['RETELL_AGENT_ID'])
         print(f"Call initiated successfully: {call_response}")
     except Exception as e:
         print(f"Failed to initiate call: {e}")
         raise HTTPException(status_code=500, detail="Failed to initiate phone call")
 
     return {"conversation_id": conversation_id}
+
+
+# @app.post("/conversation", response_model=dict)
+# async def start_conversation(request: ConversationStartRequest):
+#     conversation_id = str(uuid4())
+#     conversation_data = {
+#         "id": conversation_id,
+#         "use_case_id": request.use_case_id,
+#         "parameters": request.use_case_parameters.dict(),
+#         "status": "open",
+#         "messages": [],
+#         "call_id": None  # Placeholder for call_id to be updated after call initiation
+#     }
+
+#     # Store initial conversation data
+#     container.upsert_item(conversation_data)
+
+#     # Trigger a phone call to the agent using Twilio
+#     try:
+#         call_response = twilio_client.create_phone_call("+447700153715", "+917303571379", os.environ['RETELL_AGENT_ID'])
+#         print(f"Call initiated successfully: {call_response}")
+
+#         # Assuming call_response contains call_id
+
+#         call_respons2 = twilio_client.retell.register_call(operations.RegisterCallRequestBody(
+#             agent_id=os.environ['RETELL_AGENT_ID'], 
+#             audio_websocket_protocol="twilio", 
+#             audio_encoding="mulaw", 
+#             sample_rate=8000
+#         ))
+#         conversation_data['call_id'] = call_respons2.call_detail.call_id
+#         container.upsert_item(conversation_data)  # Update the item with call_id
+
+#     except Exception as e:
+#         print(f"Failed to initiate call: {e}")
+#         raise HTTPException(status_code=500, detail="Failed to initiate phone call")
+
+#     return {"conversation_id": conversation_id, "call_id": call_response['call_id']}
+
+
+# @app.post("/conversation", response_model=dict)
+# async def start_conversation(request: ConversationStartRequest):
+#     conversation_id = str(uuid4())
+#     conversations[conversation_id] = {
+#         "use_case_id": request.use_case_id,
+#         "parameters": request.use_case_parameters.dict(),
+#         "status": "open",
+#         "messages": []
+#     }
+
+
+#     return {"conversation_id": conversation_id}
 
 
 # import time
@@ -172,6 +226,7 @@ async def handle_twilio_voice_webhook(request: Request, agent_id_path: str):
             response = VoiceResponse()
             start = response.connect()
             start.stream(url=f"wss://api.retellai.com/audio-websocket/{call_response.call_detail.call_id}")
+           
             return PlainTextResponse(str(response), media_type='text/xml')
     except Exception as err:
         print(f"Error in twilio voice webhook: {err}")
@@ -206,6 +261,98 @@ async def handle_twilio_voice_webhook(request: Request, agent_id_path: str):
             
 
 
+
+
+
+
+
+
+
+
+
+# from azure.cosmos.exceptions import CosmosResourceNotFoundError
+
+# @app.websocket("/llm-websocket/{call_id}")
+# async def websocket_handler(websocket: WebSocket, call_id: str):
+#     await websocket.accept()
+
+#     try:
+#         # Query to find the conversation item by call_id
+#         query = "SELECT * FROM c WHERE c.call_id = @call_id"
+#         items = list(container.query_items(
+#             query=query,
+#             parameters=[{"name": "@call_id", "value": call_id}],
+#             enable_cross_partition_query=True
+#         ))
+#         if not items:
+#             raise CosmosResourceNotFoundError
+
+#         conversation_data = items[0]
+#         print(f"Conversation data fetched successfully: {conversation_data}")
+
+#     except CosmosResourceNotFoundError:
+#         print("Conversation not found in the database.")
+#         await websocket.close(code=1002)
+#         return
+#     except Exception as e:
+#         print(f"Error fetching conversation data: {e}")
+#         await websocket.close(code=1011)
+#         return
+
+#     # # Fetch the conversation details from Cosmos DB
+#     # try:
+#     #     conversation_data = container.read_item(item=call_id, partition_key=call_id)
+#     #     print(f"Conversation data fetched successfully: {conversation_data}")
+#     # except CosmosResourceNotFoundError:
+#     #     print("Conversation not found in the database.")
+#     #     await websocket.close(code=1002)  # Close the connection with appropriate WebSocket close code
+#     #     return
+#     # except Exception as e:
+#     #     print(f"Error fetching conversation data: {e}")
+#     #     await websocket.close(code=1011)  # Unexpected condition that prevented the request from being fulfilled
+#     #     return
+
+#     # Use llm_client configured with fetched data
+#     llm_client = LlmClient(conversation_data['use_case_id'], conversation_data['parameters'])
+
+#     # send first message to signal readiness of server
+#     response_id = 0
+#     first_event = llm_client.draft_begin_message()  # Ensure this function exists and is correctly named
+#     await websocket.send_text(json.dumps(first_event))
+
+#     async def stream_response(request):
+#         nonlocal response_id
+#         for event in llm_client.draft_response(request):
+#             await websocket.send_text(json.dumps(event))
+#             if request['response_id'] < response_id:
+#                 return  # new response needed, abandon this one
+
+#     try:
+#         while True:
+#             message = await websocket.receive_text()
+#             request = json.loads(message)
+#             if 'response_id' not in request:
+#                 continue  # no response needed, process live transcript update if needed
+#             response_id = request['response_id']
+#             asyncio.create_task(stream_response(request))
+#     except WebSocketDisconnect:
+#         print(f"WebSocket disconnected for {call_id}")
+#     except Exception as e:
+#         print(f'WebSocket error for {call_id}: {e}')
+#     finally:
+#         # Optional: summarize and log the transcript
+#         if 'transcript' in request:
+#             summarize_transcript(request['transcript'])
+#             for utterance in request['transcript']:
+#                 if utterance["role"] == "agent":
+#                     print(f"Agent:- {utterance['content']}")
+#                 else:
+#                     print(f"User:- {utterance['content']}")
+#             print("Conversation transcript processed", request['transcript'])
+#         print(f"WebSocket connection closed for {call_id}")
+
+
+
 @app.websocket("/llm-websocket/{call_id}")
 async def websocket_handler(websocket: WebSocket, call_id: str):
     await websocket.accept()
@@ -230,8 +377,8 @@ async def websocket_handler(websocket: WebSocket, call_id: str):
             message = await websocket.receive_text()
             request = json.loads(message)
             # print out transcript
-            # os.system('cls' if os.name == 'nt' else 'clear')
-            # print(json.dumps(request, indent=4))
+            os.system('cls' if os.name == 'nt' else 'clear')
+            print(json.dumps(request, indent=4))
             
             if 'response_id' not in request:
                 continue # no response needed, process live transcript update if needed
@@ -250,6 +397,8 @@ async def websocket_handler(websocket: WebSocket, call_id: str):
                 print(f"User:- {utterance['content']}")
         print("🤢🤢🤢🤢", request['transcript'])
         print(f"LLM WebSocket connection closed for {call_id}")
+
+
 # client = OpenAI(
 #             organization=os.environ['OPENAI_ORGANIZATION_ID'],
 #             api_key=os.environ['OPENAI_API_KEY'],
@@ -260,6 +409,8 @@ client  = AzureOpenAI(
             api_version="2024-02-01"
             
         )
+
+
 def summarize_transcript( transcript):
     messages = ""
     for utterance in transcript:
