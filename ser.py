@@ -68,8 +68,6 @@ class UseCaseParameters(BaseModel):
 
 
 
-
-
 class ConversationStartRequest(BaseModel):
     use_case_id: str
     use_case_parameters: UseCaseParameters
@@ -100,8 +98,7 @@ async def start_conversation(request: ConversationStartRequest):
         "parameters": request.use_case_parameters.dict(),
         "status": "open",
         "messages": [],
-        "call_id": None,
-        "answers": ""
+        "call_id": None
     }
 
     
@@ -109,7 +106,7 @@ async def start_conversation(request: ConversationStartRequest):
 
         # Trigger a phone call to the agent using Twilio
     try:
-        call_response = twilio_client.create_phone_call("+447700153715", "+918439040750", os.environ['RETELL_AGENT_ID'],conversation_id=conversation_id)
+        call_response = twilio_client.create_phone_call("+447700153715", "+917303571379", os.environ['RETELL_AGENT_ID'],conversation_id=conversation_id)
         print(f"Call initiated successfully: {call_response}")
     except Exception as e:
         print(f"Failed to initiate call: {e}")
@@ -271,7 +268,7 @@ async def handle_twilio_voice_webhook(request: Request, agent_id_path: str, conv
             # print(call_response.call_detail.call_id)
             # Update the conversation with the new call_id
             conversation['call_id'] = call_response.call_detail.call_id
-            # print(conversation['call_id'])
+            print(conversation['call_id'])
             # Upsert the updated conversation back into the database
             container.upsert_item(conversation)
 
@@ -406,31 +403,6 @@ async def handle_twilio_voice_webhook(request: Request, agent_id_path: str, conv
 #             print("Conversation transcript processed", request['transcript'])
 #         print(f"WebSocket connection closed for {call_id}")
 
-# This function should be inside or accessible by your llm_with_function_calling.py logic
-
-def update_conversation_answers(call_id, answers):
-    # Fetch the existing conversation item from the Cosmos DB
-    try:
-        conversation_item = container.read_item(item=call_id, partition_key=call_id)
-        print("Existing conversation data fetched successfully.")
-    except Exception as e:
-        print(f"Failed to fetch conversation data: {e}")
-        return False
-
-    # Update the conversation item with new answers
-    if 'answers' in conversation_item:
-        conversation_item['answers'] += f"\n{answers}"  # Append new answers
-    else:
-        conversation_item['answers'] = answers  # Initialize if not present
-
-    # Upsert the updated item back into the database
-    try:
-        container.upsert_item(conversation_item)
-        print("Conversation updated successfully with new answers.")
-        return True
-    except Exception as e:
-        print(f"Failed to update conversation: {e}")
-        return False
 
 
 @app.websocket("/llm-websocket/{call_id}")
@@ -449,7 +421,6 @@ async def websocket_handler(websocket: WebSocket, call_id: str):
         enable_cross_partition_query=True
     ))
 
-
     if not items:
         print(f"No conversation found for call_id: {call_id}")
         await websocket.close(code=1011)  # Internal error
@@ -463,7 +434,7 @@ async def websocket_handler(websocket: WebSocket, call_id: str):
  
 
     # Initialize LlmClient with fetched data
-    llm_client = LlmClient(use_case_id=use_case_id, use_case_parameters=use_case_parameters )
+    llm_client = LlmClient(use_case_id=use_case_id, use_case_parameters=use_case_parameters)
 
 
     # llm_client = LlmClient()
@@ -496,8 +467,6 @@ async def websocket_handler(websocket: WebSocket, call_id: str):
     except Exception as e:
         print(f'LLM WebSocket error for {call_id}: {e}')
     finally:
-
-        update_conversation_answers(call_id, llm_client.answers)
         summarize_transcript(request['transcript'])
         for utterance in request['transcript']:
             if utterance["role"] == "agent":

@@ -81,14 +81,14 @@ class TwilioClient:
             print(err)
     
     # Create an outbound call
-    def create_phone_call(self, from_number, to_number, agent_id):
+    def create_phone_call(self, from_number, to_number, agent_id, conversation_id):
         try:
             self.client.calls.create(
                 machine_detection="Enable", # detects if the other party is IVR
                 machine_detection_timeout=8,
                 async_amd="true", # call webhook when determined whether it is machine
-                async_amd_status_callback=f"{os.getenv('NGROK_IP_ADDRESS')}/twilio-voice-webhook/{agent_id}", # Webhook url for machine detection
-                url=f"{os.getenv('NGROK_IP_ADDRESS')}/twilio-voice-webhook/{agent_id}", 
+                async_amd_status_callback=f"{os.getenv('NGROK_IP_ADDRESS')}/twilio-voice-webhook/{agent_id}?conversation_id={conversation_id}", # Webhook url for machine detection
+                url=f"{os.getenv('NGROK_IP_ADDRESS')}/twilio-voice-webhook/{agent_id}?conversation_id={conversation_id}", 
                 to=to_number, 
                 from_=from_number
             )
