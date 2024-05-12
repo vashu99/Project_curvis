@@ -101,7 +101,8 @@ async def start_conversation(request: ConversationStartRequest):
         "status": "open",
         "messages": [],
         "call_id": None,
-        "answers": ""
+        "answers": "",
+        "transcript": ""
     }
 
     
@@ -109,7 +110,7 @@ async def start_conversation(request: ConversationStartRequest):
 
         # Trigger a phone call to the agent using Twilio
     try:
-        call_response = twilio_client.create_phone_call("+447700153715", "+918439040750", os.environ['RETELL_AGENT_ID'],conversation_id=conversation_id)
+        call_response = twilio_client.create_phone_call("+447700153715", "+917303571379", os.environ['RETELL_AGENT_ID'],conversation_id=conversation_id)
         print(f"Call initiated successfully: {call_response}")
     except Exception as e:
         print(f"Failed to initiate call: {e}")
@@ -407,31 +408,74 @@ async def handle_twilio_voice_webhook(request: Request, agent_id_path: str, conv
 #         print(f"WebSocket connection closed for {call_id}")
 
 # This function should be inside or accessible by your llm_with_function_calling.py logic
-
 def update_conversation_answers(call_id, answers):
-    # Fetch the existing conversation item from the Cosmos DB
-    try:
-        conversation_item = container.read_item(item=call_id, partition_key=call_id)
-        print("Existing conversation data fetched successfully.")
-    except Exception as e:
-        print(f"Failed to fetch conversation data: {e}")
+    # Perform a cross-partition query to find the conversation by call_id
+    query = "SELECT * FROM c WHERE c.call_id = @call_id"
+    parameters = [{"name": "@call_id", "value": call_id}]
+    items = list(container.query_items(
+        query=query,
+        parameters=parameters,
+        enable_cross_partition_query=True
+    ))
+
+    if not items:
+        print(f"No conversation found for call_id: {call_id}")
         return False
 
+    # Assuming the first match is what you need
+    conversation_item = items[0]
+
     # Update the conversation item with new answers
+
+    
     if 'answers' in conversation_item:
-        conversation_item['answers'] += f"\n{answers}"  # Append new answers
+        conversation_item['answers'] += f"{answers}"  # Append new answers
     else:
         conversation_item['answers'] = answers  # Initialize if not present
 
     # Upsert the updated item back into the database
     try:
         container.upsert_item(conversation_item)
-        print("Conversation updated successfully with new answers.")
+        
         return True
     except Exception as e:
         print(f"Failed to update conversation: {e}")
         return False
 
+
+# def full_transcript(call_id,transcript):
+#     query = "SELECT * FROM c WHERE c.call_id = @call_id"
+#     parameters = [{"name": "@call_id", "value": call_id}]
+#     items = list(container.query_items(
+#         query=query,
+#         parameters=parameters,
+#         enable_cross_partition_query=True
+#     ))
+
+#     if not items:
+#         print(f"No conversation found for call_id: {call_id}")
+#         return False
+
+#     # Assuming the first match is what you need
+#     conversation_item = items[0]
+
+#     # Update the conversation item with new answers
+
+    
+#     if 'answers' in conversation_item:
+#         conversation_item['answers'] += f"{answers}"  # Append new answers
+#     else:
+#         conversation_item['answers'] = answers  # Initialize if not present
+
+#     # Upsert the updated item back into the database
+#     try:
+#         container.upsert_item(conversation_item)
+        
+#         return True
+#     except Exception as e:
+#         print(f"Failed to update conversation: {e}")
+#         return False
+    
 
 @app.websocket("/llm-websocket/{call_id}")
 async def websocket_handler(websocket: WebSocket, call_id: str):
@@ -490,15 +534,27 @@ async def websocket_handler(websocket: WebSocket, call_id: str):
             if 'response_id' not in request:
                 continue # no response needed, process live transcript update if needed
             response_id = request['response_id']
-            asyncio.create_task(stream_response(request))
+            await stream_response(request)
+            # asyncio.create_task(stream_response(request))
+            print(f"🤣{llm_client.answers}")
+           
+
+
+
     except WebSocketDisconnect:
         print(f"LLM WebSocket disconnected for {call_id}")
     except Exception as e:
         print(f'LLM WebSocket error for {call_id}: {e}')
     finally:
-
+        
         update_conversation_answers(call_id, llm_client.answers)
-        summarize_transcript(request['transcript'])
+       ##upload full transcript to azure
+        # print(f"🤣🤣🤣🤣🤣🤣🤣🤣🤣🤣🤣{request['transcript']}")
+
+        # print(request['transcript']['content'])
+       
+        # update_conversation_answers(call_id,request['transcript'])
+        # summarize_transcript(request['transcript'])
         for utterance in request['transcript']:
             if utterance["role"] == "agent":
                 print(f"Agent:- {utterance['content']}")

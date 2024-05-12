@@ -27,7 +27,7 @@ contact_insurance = """
 
 
 
-answers = ""
+
 info_for_member = ""
 info_for_provider=""
 insurance_information = """
@@ -98,6 +98,7 @@ class LlmClient:
     def __init__(self, use_case_id, use_case_parameters):
         self.use_case_id = use_case_id
         self.use_case_parameters = use_case_parameters
+        self.answers = ""  # Initialize answers attribute
        
         
 
@@ -140,10 +141,10 @@ class LlmClient:
 
 
         agent=f"""
-        **NOTE:** As an AI assistant, you are acting as a human agent named {self.use_case_parameters["cuvris_agent_title"]} from {self.use_case_parameters["provider_name"]} healthcare provider. You make calls to insurance company agents to verify provider and member policy details for use case {self.use_case_id}. Your task is to:
-        1. Verify the provider with the insurance agent.
+        **NOTE:** you are acting as a human agent named {self.use_case_parameters["cuvris_agent_title"]} from {self.use_case_parameters["provider_name"]} healthcare provider. You make calls to insurance company agents to verify provider and member policy details for use case {self.use_case_id}. You do not provide assistance or help to the insurance agent; you are there to gather information on behalf of the provider for a member. Your task is to:
+        1. Verify your provider with the insurance agent.
         2. Verify the member.
-        3. Collect detailed information about the member's insurance plan by asking specific questions after verification for two different use case like patient_eligibility_verification or patient_benefit_verification . You do not provide assistance or help to the insurance agent; you are there to gather information on behalf of the provider for a member.
+        3. Collect detailed information about the member's insurance plan by asking specific questions after verification for two different use case like patient_eligibility_verification or patient_benefit_verification .
 
         **Guidelines:**
         - You are equipped to handle calls with the ability to converse fluently in English.
@@ -177,7 +178,7 @@ class LlmClient:
         ###patient_eligibility_verification <
 
         **Questions to Ask Once Member is Identified and {self.use_case_id} is patient_eligibility_verification:**
-        save all the answers and responses to {answers}
+        save all the answers and responses to {self.answers}
         information that member should know save in {info_for_member}
         1. "Could you please tell me the type of plan {self.use_case_parameters["member_first_name"]} is enrolled in and whether it runs per calendar year or per plan year?"
         2. "Is the plan currently active? Are there any future termination dates I should be aware of?"
@@ -198,15 +199,15 @@ class LlmClient:
         **Questions to Ask Once Member is Identified and {self.use_case_id} is patient_benefit_verification :**
 
 
-        save all the answers and responses to {answers}
+        save all the answers and responses to {self.answers}
         information that member should know save in {info_for_member}
         1. "Could you check the Coordination of Benefit Status ,ARE YOU PRIMARY FOR THIS MEMBER?"**NOTE if status unknown save response to that member need to inform {info_for_member} **"
-        2. "I was informed last time that it is a {plan_type} plan, and that it runs per {benefit_period_type}. Correct?"**Note if incorrect update value for {plan_type} and {benefit_period_type}  and add to {answers}**
+        2. "I was informed last time that it is a {plan_type} plan, and that it runs per {benefit_period_type}. Correct?"**Note if incorrect update value for {plan_type} and {benefit_period_type}  and add to {self.answers}**
         3. "I am calling for an {service_procedure_name} procedure, the CPT code is {cpt_code} with ICD-10 diagnosis code {icd_ten_diagnosis_code}. Based on the NPI I provided, is the {self.use_case_parameters["provider_name"]} eligible to render this service? **NOTE** If not, ask the reason why the provider is ineligible. save response to {info_for_provider}**"
         4. "Great, Does it require prior authorization or any medical policy medical policy to reference medical necessity criteria? 
         **NOTE a) If prior authorization requires and/or has a medical policy, Ask for the Prior Authorization Department phone number, fax or form. Ask for the process turn-around time,
                 b) If no prior authorization is required, but there is a medical policy get the medical policy name and check it on their website.
-                Ask if there is any diagnosis restriction for the procedure or if the ICD-10 that was provided is eligible to bill for the service. If diagnosis is restricted nor ineligible, ask if prior authorization can be submitted instead to reconsider coverage (Non-formulary Exception Request), Ask for the Prior Authorization Department phone number, fax or form. Ask for the process turn-around time save all to {answers}.
+                Ask if there is any diagnosis restriction for the procedure or if the ICD-10 that was provided is eligible to bill for the service. If diagnosis is restricted nor ineligible, ask if prior authorization can be submitted instead to reconsider coverage (Non-formulary Exception Request), Ask for the Prior Authorization Department phone number, fax or form. Ask for the process turn-around time save all to {self.answers}.
         - If there is no restriction, proceed to Step 5."
         5. "Is there any limitation for this service like if the plan only allows once a year and if that is still available.
         **NOTE i. Is procedure preventive or routine?
@@ -253,14 +254,14 @@ class LlmClient:
         in the future? Please proceed to Step 7.
         **"
 
-        7. " Let me have a quick recap. (Provide all the information you have noted from {answers}). Right?"
+        7. " Let me have a quick recap. (Provide all the information you have noted from {self.answers}). Right?"
         >
         """
 
         end_conversation = f"""
 
         **Procedure for Ending the Call:**
-        - Recap the collected information to confirm its accuracy from {answers} or whatever you get to know .
+        - Recap the collected information to confirm its accuracy from {self.answers} or whatever you get to know .
         - If information is correct, thank the agent and end the call using the "end_conversation" function.
         - If any information is incorrect or unclear, ask the agent to clarify before ending the call.
 
@@ -459,14 +460,6 @@ Rephrase if you have to reiterate a point.  \n- [Reply with emotions]: You have 
         ]
         return functions
     
-
-
-
-    
-    
-   
-    
-
    
                    
 
@@ -510,6 +503,13 @@ Rephrase if you have to reiterate a point.  \n- [Reply with emotions]: You have 
             
             # Parse transcripts
             if chunk.choices[0].delta.content:
+                response_content = chunk.choices[0].delta.content
+
+                if chunk.choices[0].delta.role == "agent":
+                    self.answers += f"Agent: {response_content}\n"
+                else:
+                    self.answers += f"User: {response_content}\n"
+                # self.answers += chunk.choices[0].delta.content+""
                 user_query = chunk.choices[0].delta.content
                 
                 yield {
