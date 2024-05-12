@@ -110,7 +110,7 @@ async def start_conversation(request: ConversationStartRequest):
 
         # Trigger a phone call to the agent using Twilio
     try:
-        call_response = twilio_client.create_phone_call("+447700153715", "+917303571379", os.environ['RETELL_AGENT_ID'],conversation_id=conversation_id)
+        call_response = twilio_client.create_phone_call("+447700153715", request.use_case_parameters.dict().get('member_phone_number'), os.environ['RETELL_AGENT_ID'],conversation_id=conversation_id)
         print(f"Call initiated successfully: {call_response}")
     except Exception as e:
         print(f"Failed to initiate call: {e}")
