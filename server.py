@@ -64,6 +64,7 @@ class UseCaseParameters(BaseModel):
     member_first_name: str
     member_last_name: str
     member_phone_number: str
+    insurance_provider_telephone: str
     member_address_line_1: str
     member_address_line_2: str
     member_state: str
@@ -131,7 +132,7 @@ async def start_conversation(request: ConversationStartRequest):
     print(os.environ['RETELL_AGENT_ID'], "aaaaaaakkfkfklrkklergoi4jgtrjgoi[tj]")
         # Trigger a phone call to the agent using Twilio
     try:
-        call_response = twilio_client.create_phone_call("+447700153715", request.use_case_parameters.dict().get('member_phone_number'), os.environ['RETELL_AGENT_ID'],conversation_id=conversation_id)
+        call_response = twilio_client.create_phone_call("+447700153715", request.use_case_parameters.dict().get('insurance_provider_telephone'), os.environ['RETELL_AGENT_ID'],conversation_id=conversation_id)
         print(f"Call initiated successfully: {call_response}")
     except Exception as e:
         print(f"Failed to initiate call: {e}")
@@ -298,7 +299,7 @@ def conversation_query(fetched_variables, transcript, query):
 
 
 
-def get_output_variables(fetched_variables, transcript):
+def get_output_variables(transcript):
     try:
         allowed_variables = ["member_has_account", "plan_type", "benefit_period_type", "benefit_period_start_date",
                 "benefit_period_end_date", "plan_is_active", "future_termination_date", "provider_in_network",
@@ -306,9 +307,47 @@ def get_output_variables(fetched_variables, transcript):
                 "is_insurance_primary", "is_prior_authorisation_required", "is_preexisting_conditions_covered",
                 "has_carved_out_dental_benefit", "carved_out_dental_benefit_name", "carved_out_dental_benefit_phone_no",
                 "has_pbm", "pbm_name", "pbm_phone_no", "separate_benefit_dept_phone_no", "separate_preauth_dept_phone_no",
-                "requires_member_followup"]
+                "requires_member_followup","info_for_member","info_for_provider","good", 
+            "requires_member_followup",
+            "eligible_for_service",
+            "not_eligible_reason",
+            "is_prior_authorisation_required",
+            "prior_auth_phoneno",
+            "prior_auth_fax",
+            "prior_auth_form_no",
+            "est_prior_auth_turnaround_time",
+            "is_medical_policy_attached",
+            "diagnosis_restriction",
+            "medical_policy_name",
+            "icd_ten_billing_eligible",
+            "supports_nonformulatory_exception",
+            "plan_limit_per_period",
+            "plan_limit_no_of_servicetimes_per_period",
+            "plan_limit_accumulated_cost",
+            "plan_limit_no_of_servicestimes_used",
+            "does_copay_apply",
+            "copay_per_visit",
+            "copay_max",
+            "copay_met",
+            "is_copay_service_or_specialty_based",
+            "copay_specialties",
+            "does_deductible_apply",  
+            "deductible_type",
+            "deductible_met",
+            "does_coinsurance_apply",
+            "coinsurance_prcnt",
+            "oop_max",
+            "is_oop_individual_or_family",
+            "oop_met",
+            "does_oop_include_ded_copay_coins",
+            "oop_combination_elements",
+            "is_oop_combined_with_prescriptions",
+            "dollar_max",
+            "dollar_max_accumulated",
+            "coverage_after_oop_max_details"
+            ]
 
-        prompt = f"""Using the provided dictionary of variables and the transcript of a call, extract and return the values for the predefined list of allowed variables in a valid JSON format. If a value for an allowed variable can be found in the provided data or inferred from the call transcript, include it in the output. If no value can be found, omit that variable from the output. The response must be a valid JSON only, formatted as:
+        prompt = f"""Using the provided transcript of a call, extract and return the values for the predefined list of allowed variables in a valid JSON format. If a value for an allowed variable can be found in the provided data or inferred from the call transcript, include it in the output.Output fields that have not been collected should be null. For outputs that are truthy or falsy, the acceptable values are “YES”, “NO”, “UNKNOWN”. The response must be a valid JSON only, formatted as:
                     {{
                     "variable_name": "variable_value",
                     "variable_name": "variable_value"
@@ -318,7 +357,6 @@ def get_output_variables(fetched_variables, transcript):
                     {allowed_variables}
 
                     Provided data includes:
-                    Variables: {fetched_variables}
 
                     Transcript:
                     {transcript}
@@ -418,8 +456,45 @@ async def websocket_handler(websocket: WebSocket, call_id: str):
             else:
                 # print(f"Provider:- {utterance['content']}")
                 transcript.append(f"Provider:- {utterance['content']}")
-        output_variables = get_output_variables(llm_client.output, transcript)
-        allowed_variables = ["error", "member_has_account", "plan_type", "benefit_period_type", "benefit_period_start_date", "benefit_period_end_date", "plan_is_active", "future_termination_date", "provider_in_network", "deductible", "copay", "co_insurance", "needs_pcp_referral", "has_add_on_dental_benefit", "is_insurance_primary", "is_prior_authorisation_required", "is_preexisting_conditions_covered", "has_carvedout_dental_benefit", "carved_out_dental_benefit_name", "carved_out_dental_benefit_phone_no", "has_pbm", "pbm_name", "pbm_phone_no", "separate_benefit_dept_phone_no", "separate_preauth_dept_phone_no", "requires_member_followup"]
+        output_variables = get_output_variables(transcript)
+        allowed_variables = ["error", "member_has_account", "plan_type", "benefit_period_type", "benefit_period_start_date", "benefit_period_end_date", "plan_is_active", "future_termination_date", "provider_in_network", "deductible", "copay", "co_insurance", "needs_pcp_referral", "has_add_on_dental_benefit", "is_insurance_primary", "is_prior_authorisation_required", "is_preexisting_conditions_covered", "has_carvedout_dental_benefit", "carved_out_dental_benefit_name", "carved_out_dental_benefit_phone_no", "has_pbm", "pbm_name", "pbm_phone_no", "separate_benefit_dept_phone_no", "separate_preauth_dept_phone_no", "requires_member_followup", "info_for_member", "info_for_provider", "good",
+                             "requires_member_followup",
+            "eligible_for_service",
+            "not_eligible_reason",
+            "is_prior_authorisation_required",
+            "prior_auth_phoneno",
+            "prior_auth_fax",
+            "prior_auth_form_no",
+            "est_prior_auth_turnaround_time",
+            "is_medical_policy_attached",
+            "diagnosis_restriction",
+            "medical_policy_name",
+            "icd_ten_billing_eligible",
+            "supports_nonformulatory_exception",
+            "plan_limit_per_period",
+            "plan_limit_no_of_servicetimes_per_period",
+            "plan_limit_accumulated_cost",
+            "plan_limit_no_of_servicestimes_used",
+            "does_copay_apply",
+            "copay_per_visit",
+            "copay_max",
+            "copay_met",
+            "is_copay_service_or_specialty_based",
+            "copay_specialties",
+            "does_deductible_apply",  
+            "deductible_type",
+            "deductible_met",
+            "does_coinsurance_apply",
+            "coinsurance_prcnt",
+            "oop_max",
+            "is_oop_individual_or_family",
+            "oop_met",
+            "does_oop_include_ded_copay_coins",
+            "oop_combination_elements",
+            "is_oop_combined_with_prescriptions",
+            "dollar_max",
+            "dollar_max_accumulated",
+            "coverage_after_oop_max_details"]
         output = {}
         for variable in output_variables:
             if variable in allowed_variables:

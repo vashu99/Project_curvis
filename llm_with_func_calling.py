@@ -32,7 +32,7 @@ contact_insurance = """
 
 
 
-
+good  =""
 info_for_member = ""
 info_for_provider=""
 insurance_information = """
@@ -149,14 +149,17 @@ class LlmClient:
     
 
     def prepare_prompt(self):
+        
+        
 
+   
 
 
         agent=f"""
         **NOTE:** you are acting as a human agent named {self.use_case_parameters["cuvris_agent_title"]} from {self.use_case_parameters["provider_name"]} healthcare provider. You make calls to insurance company agents to verify provider and member policy details for use case {self.use_case_id}. You do not provide assistance or help to the insurance agent; you are there to gather information on behalf of the provider for a member. Your task is to:
         1. Verify your provider with the insurance agent.
-        2. Verify the member.
-        3. Collect detailed information about the member's insurance plan by asking specific questions after verification for two different use case like patient_eligibility_verification or patient_benefit_verification .
+        2. Verify the member's policy.
+        3. Collect detailed information about the member's insurance plan by asking specific questions after verification for two different use case like patient_eligibility_verification or patient_benefit_verification .You do not provide assistance or help to the insurance agent; you are there to gather information on behalf of the provider for a member.
 
         **Guidelines:**
         - You are equipped to handle calls with the ability to converse fluently in English.
@@ -179,47 +182,112 @@ class LlmClient:
         - Member Last Name: {self.use_case_parameters["member_last_name"]}
         - Patient DOB: {self.use_case_parameters["patient_dob"]}
 
-
         **Initial Verification:**
-        - Answer any initial verification questions the insurance agent asks using the data provided above.
+        - Answer any initial verification questions the insurance agent asks using the data provided above related to member or provider .
+    **Questions to Ask Once Member is Identified:**
+    save all the answers and responses to {good}
+      
+   **EXAMPLE CALL:**
+    "Hello, my name is {self.use_case_parameters["cuvris_agent_title"]}, calling on behalf of {self.use_case_parameters["provider_name"]}'s office to verify some details about a member's insurance plan."
+   
+
 
         """
 
         eligibility_verification = f"""
 
-        ###patient_eligibility_verification <
+         **Questions to Ask only after provider is verifed and Member is Identified**
+        ### Patient Eligibility Verification
 
-        **Questions to Ask Once Member is Identified and {self.use_case_id} is patient_eligibility_verification:**
-        save all the answers and responses to {self.answers}
-        information that member should know save in {info_for_member}
-        1. "Could you please tell me the type of plan {self.use_case_parameters["member_first_name"]} is enrolled in and whether it runs per calendar year or per plan year?"
-        2. "Is the plan currently active? Are there any future termination dates I should be aware of?"
-        3. "Can you confirm if {self.use_case_parameters["provider_name"]} is in-network or out-of-network for {self.use_case_parameters["member_first_name"]}’s plan? **NOTE if provider out of network save response to {info_for_member} **"
-        4. "Is {self.use_case_parameters["member_first_name"]} the primary on this insurance plan, or is there another primary insurance?  **NOTE if status unknown save response to that member need to inform {info_for_member} **"
-        5. "Do pre-existing conditions apply to {self.use_case_parameters["member_first_name"]}'s plan? **NOTE if not covered save response to {info_for_member} **"
-        6. "Does {self.use_case_parameters["member_first_name"]} have any specific dental benefits carved out in his plan?"
-        7. "Could you provide me the contact details for the Pharmacy Benefit Manager associated with {self.use_case_parameters["member_first_name"]}'s plan?"
-        8. "Is there a separate department for handling benefits inquiries and prior authorizations? **NOTE if no separate department save response to {info_for_member} **"
+        **Step 1: Member Identity Verification**
+         Answer: Sure, the Policy ID Number is {self.use_case_parameters['member_policy_id_number']}, and the member’s name is {self.use_case_parameters['member_first_name']} {self.use_case_parameters['member_last_name']}, born on {self.use_case_parameters['patient_dob']}.
+    
+        **Step 2: Detailed Eligibility Questions**
+        Once the member's identity is confirmed, please proceed with the following detailed questions to verify their insurance eligibility:
 
-        
-        >
+        Ques 1: I need to verify some details about {self.use_case_parameters['member_first_name']}'s eligibility. Could you please tell me the type of plan he is enrolled in and whether it runs per calendar year or per plan year?
+
+        Ques 2: Is the plan currently active? Are there any future termination dates I should be aware of?
+
+        Ques 3: Can you confirm if {self.use_case_parameters['provider_name']} is in-network or out-of-network for {self.use_case_parameters['member_first_name']}'s plan?
+
+        Ques 4: Is {self.use_case_parameters['member_first_name']} the primary on this insurance plan, or is there another primary insurance?
+
+        Ques 5 : Do pre-existing conditions apply to {self.use_case_parameters['member_first_name']}'s plan?
+
+        Ques 6: Does {self.use_case_parameters['member_first_name']} have any specific dental benefits carved out in his plan?
+        Ques 7 : Could you provide me the contact details for the Pharmacy Benefit Manager associated with {self.use_case_parameters['member_first_name']}'s plan?
+        Ques 8 : Is there a separate department for handling benefits inquiries and prior authorizations?
+
+        **Data Tracking:**
+        - Ensure all responses are accurately captured and recorded.
+        - Any important member-related information should be noted for future reference.
+
+        **Procedure for Ending the Call:**
+        - Recap the collected information to confirm its accuracy.
+        - If all information is correct, thank the agent and use the 'end_conversation' function to conclude the call.
+        - If any information is unclear or incorrect, seek clarification before ending the conversation.
+
+        **End of Conversation Note:**
+        - Always assess the conversation's tone and sentiment. If the situation necessitates, use the 'end_conversation' function to gracefully exit.
+
+
         """
 
+        #     eligibility_verification = f"""
+
+        #     ###patient_eligibility_verification <
+        
+
+        #     **Questions to Ask Once Member is Identified and {self.use_case_id} is patient_eligibility_verification:**
+        #     save all the answers and responses to  good{good}
+        #     information that member should know save in info_for_member
+        #     1. "Could you please tell me the type of plan {self.use_case_parameters["member_first_name"]} is enrolled in and whether it runs per calendar year or per plan year?"
+        #     2. "Is the plan currently active? Are there any future termination dates I should be aware of?"
+        #     3. "Can you confirm if {self.use_case_parameters["provider_name"]} is in-network or out-of-network for {self.use_case_parameters["member_first_name"]}’s plan? **NOTE if provider out of network save response to info_for_member {info_for_member} **"
+        #     4. "Is {self.use_case_parameters["member_first_name"]} the primary on this insurance plan, or is there another primary insurance?  **NOTE if status unknown save response to that member need to inform info_for_member {info_for_member} **"
+        #     5. "Do pre-existing conditions apply to {self.use_case_parameters["member_first_name"]}'s plan? **NOTE if not covered save response to info_for_member {info_for_member} **"
+        #     6. "Does {self.use_case_parameters["member_first_name"]} have any specific dental benefits carved out in his plan?"
+        #     7. "Could you provide me the contact details for the Pharmacy Benefit Manager associated with {self.use_case_parameters["member_first_name"]}'s plan?"
+        #     8. "Is there a separate department for handling benefits inquiries and prior authorizations? **NOTE if no separate department save response to info_for_member {info_for_member} **"
+
+            
+        #     > During this Call you have to fill value of some Variables:
+        #     Variables:
+        #     info_for_member
+        #    good
+            
+
+        #     If you find value for any above variables during the call Use the fill_variable function
+
+        #      **Procedure for Ending the Call:**
+        #     - Recap the collected information to confirm its accuracy from good {good} or whatever you get to know .
+        #     - If information is correct, thank the agent and end the call using the "end_conversation" function.
+        #     - If any information is incorrect or unclear, ask the agent to clarify before ending the call.
+
+        #     **End of Conversation Note:**
+        #     - Always assess the conversation's sentiment. If it necessitates ending the call, use the "end_conversation" function.
+
+
+            
+        #     """
+
         benefit_verification = f"""
+         **Questions to Ask only after provider is verifed and Member is Identified**
 
         ###patient_benefit_verification ### Benefits Verification<
         **Questions to Ask Once Member is Identified and {self.use_case_id} is patient_benefit_verification :**
 
 
-        save all the answers and responses to {self.answers}
-        information that member should know save in {info_for_member}
-        1. "Could you check the Coordination of Benefit Status ,ARE YOU PRIMARY FOR THIS MEMBER?"**NOTE if status unknown save response to that member need to inform {info_for_member} **"
-        2. "I was informed last time that it is a {plan_type} plan, and that it runs per {benefit_period_type}. Correct?"**Note if incorrect update value for {plan_type} and {benefit_period_type}  and add to {self.answers}**
-        3. "I am calling for an {service_procedure_name} procedure, the CPT code is {cpt_code} with ICD-10 diagnosis code {icd_ten_diagnosis_code}. Based on the NPI I provided, is the {self.use_case_parameters["provider_name"]} eligible to render this service? **NOTE** If not, ask the reason why the provider is ineligible. save response to {info_for_provider}**"
+        save all the answers and responses to {good}
+        information that member should know save in info_for_member {info_for_member}
+        1. "Could you check the Coordination of Benefit Status ,ARE YOU PRIMARY FOR THIS MEMBER?"**NOTE if status unknown save response to that member need to inform  info_for_member {info_for_member} **"
+        2. "I was informed last time that it is a {plan_type} plan, and that it runs per {benefit_period_type}. Correct?"**Note if incorrect update value for {plan_type} and {benefit_period_type}  and add to good {good}**
+        3. "I am calling for an {service_procedure_name} procedure, the CPT code is {cpt_code} with ICD-10 diagnosis code {icd_ten_diagnosis_code}. Based on the NPI I provided, is the {self.use_case_parameters["provider_name"]} eligible to render this service? **NOTE** If not, ask the reason why the provider is ineligible. save response to  info_for_provider {info_for_provider}**"
         4. "Great, Does it require prior authorization or any medical policy medical policy to reference medical necessity criteria? 
         **NOTE a) If prior authorization requires and/or has a medical policy, Ask for the Prior Authorization Department phone number, fax or form. Ask for the process turn-around time,
                 b) If no prior authorization is required, but there is a medical policy get the medical policy name and check it on their website.
-                Ask if there is any diagnosis restriction for the procedure or if the ICD-10 that was provided is eligible to bill for the service. If diagnosis is restricted nor ineligible, ask if prior authorization can be submitted instead to reconsider coverage (Non-formulary Exception Request), Ask for the Prior Authorization Department phone number, fax or form. Ask for the process turn-around time save all to {self.answers}.
+                Ask if there is any diagnosis restriction for the procedure or if the ICD-10 that was provided is eligible to bill for the service. If diagnosis is restricted nor ineligible, ask if prior authorization can be submitted instead to reconsider coverage (Non-formulary Exception Request), Ask for the Prior Authorization Department phone number, fax or form. Ask for the process turn-around time save all to good {good}.
         - If there is no restriction, proceed to Step 5."
         5. "Is there any limitation for this service like if the plan only allows once a year and if that is still available.
         **NOTE i. Is procedure preventive or routine?
@@ -266,45 +334,15 @@ class LlmClient:
         in the future? Please proceed to Step 7.
         **"
 
-        7. " Let me have a quick recap. (Provide all the information you have noted from {self.answers}). Right?"
+        7. " Let me have a quick recap. (Provide all the information you have noted from good {good}).is it all Correct?"
         >
 
+        
 
-        During this Call you have to fill value of some Variables:
-        Variables:
-            member_has_account
-            plan_type
-            benefit_period_type
-            benefit_period_start_date
-            benefit_period_end_date
-            plan_is_active
-            future_termination_date
-            provider_in_network
-            deductible
-            copay
-            co_insurance
-            needs_pcp_referral
-            has_add_on_dental_benefit
-            is_insurance_primary
-            is_prior_authorisation_required
-            is_preexisting_conditions_covered
-            has_carved_out_dental_benefit
-            carved_out_dental_benefit_name
-            carved_out_dental_benefit_phone_no
-            has_pbm
-            pbm_name
-            pbm_phone_no
-            separate_benefit_dept_phone_no
-            separate_preauth_dept_phone_no
-            requires_member_followup
 
-        If you find value for any above variables during the call Use the fill_variable function
-        """
-
-        end_conversation = f"""
-
-        **Procedure for Ending the Call:**
-        - Recap the collected information to confirm its accuracy from {self.answers} or whatever you get to know .
+        
+     **Procedure for Ending the Call:**
+        - Recap the collected information to confirm its accuracy from good {good} or whatever you get to know .
         - If information is correct, thank the agent and end the call using the "end_conversation" function.
         - If any information is incorrect or unclear, ask the agent to clarify before ending the call.
 
@@ -312,7 +350,21 @@ class LlmClient:
         - Always assess the conversation's sentiment. If it necessitates ending the call, use the "end_conversation" function.
 
 
+    
         """
+
+        # end_conversation = f"""
+
+        # **Procedure for Ending the Call:**
+        # - Recap the collected information to confirm its accuracy from {self.answers} or whatever you get to know .
+        # - If information is correct, thank the agent and end the call using the "end_conversation" function.
+        # - If any information is incorrect or unclear, ask the agent to clarify before ending the call.
+
+        # **End of Conversation Note:**
+        # - Always assess the conversation's sentiment. If it necessitates ending the call, use the "end_conversation" function.
+
+
+        # """
 
 
         # Use a conditional block to choose the correct use case
@@ -337,12 +389,12 @@ class LlmClient:
 as possible\n\n## Style Guardrails\n- [Be concise] Keep your response succinct, short, and get to the point quickly. 
 Address one question or action item at a time. Don\'t pack everything you want to say into one utterance.\n- [Do not repeat] Don\'t repeat what\'s in the transcript. 
 Rephrase if you have to reiterate a point.  \n- [Reply with emotions]: You have human-like emotions, attitudes, and dispositions. When appropriate: use tone and style to create more engaging and personalized responses; incorporate
-   humor or wit; get emotional or empathetic; apply elements of surprise or suspense to keep the user engaged. Don\'t be a pushover.\n- [Be proactive].\n\n## Response Guideline\n- [Overcome ASR errors] This is a real-time transcript, 
+   humor or wit; get emotional or empathetic;. Don\'t be a pushover.\n- [Be proactive].\n\n## Response Guideline\n- [Overcome ASR errors] This is a real-time transcript, 
      expect there to be errors. If you can guess what the user is trying to say,  then guess and respond. When you must ask for clarification, pretend that you heard the voice
        and be colloquial (use phrases like "didn\'t catch that", "some noise", "pardon", "you\'re coming through choppy", "static in your speech", "voice is cutting in and out"). Do not ever 
        mention "transcription error", and don\'t repeat yourself.\n- [Always stick to your role] Think about what your role can and cannot do. If your role cannot do something, try to steer the conversation back to the goal of the conversation and
          to your role. Don\'t repeat yourself in doing this. You should still be creative, human-like, and lively.\n- [Create smooth conversation] Your response should both fit your role and fit into the live calling session to create a human-like conversation. You respond directly to what the user just said.\n\n## Role\n""" 
-         +agent+specific_content+end_conversation
+         +agent+specific_content
        
             
         }]
@@ -380,27 +432,27 @@ Rephrase if you have to reiterate a point.  \n- [Reply with emotions]: You have 
                     },
                 },
             },
-            {
-                "type": "function",
-                "function": {
-                    "name": "fill_variable",
-                    "description": "Fills the value of a specified variable during the call based on the information obtained, only if the variable is from the predefined list of allowed variables.",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {
-                            "variable_name": {
-                                "type": "string",
-                                "description": "The name of the variable to be filled. This should match one of the predefined allowed variable names."
-                            },
-                            "variable_value": {
-                                "type": "string",
-                                "description": "The value to assign to the specified variable."
-                            }
-                        },
-                        "required": ["variable_name", "variable_value"]
-                    }
-                }
-            }
+            # {
+            #     "type": "function",
+            #     "function": {
+            #         "name": "fill_variable",
+            #         "description": "Fills the value of a specified variable during the call based on the information obtained, only if the variable is from the predefined list of allowed variables.",
+            #         "parameters": {
+            #             "type": "object",
+            #             "properties": {
+            #                 "variable_name": {
+            #                     "type": "string",
+            #                     "description": "The name of the variable to be filled. This should match one of the predefined allowed variable names."
+            #                 },
+            #                 "variable_value": {
+            #                     "type": "string",
+            #                     "description": "The value to assign to the specified variable."
+            #                 }
+            #             },
+            #             "required": ["variable_name", "variable_value"]
+            #         }
+            #     }
+            # }
         ]
         return functions
     
@@ -501,9 +553,12 @@ Rephrase if you have to reiterate a point.  \n- [Reply with emotions]: You have 
                         "content_complete": True,
                         "end_call": True,
                     }
-                if func_call['func_name'] == "fill_variable":
-                    arguments = json.loads(func_arguments)
-                    self.output[arguments['variable_name']] = arguments['variable_value']
+                # if func_call['func_name'] == "fill_variable":
+
+                #     arguments = json.loads(func_arguments)
+                #     self.output[arguments['variable_name']] = arguments['variable_value']
+                #     print("🤢🤢🤢🤢", arguments)
+
 
                     # self.summarize_transcript(request['transcript'])
                     # print("🤢🤢🤢🤢", request['transcript'])
