@@ -6,11 +6,16 @@ import json
 import datetime
 import requests
 import re
+from typing import Dict
+from dotenv import load_dotenv
+load_dotenv(override=True)
+
 from azure.cosmos import CosmosClient, PartitionKey, exceptions
 
 
 url = os.environ['ACCOUNT_HOST']
 key = os.environ['ACCOUNT_KEY']
+model_name = os.environ['AZURE_OPENAI_DEPLOYMENT_NAME']
 # key = os.environ['ACCOUNT_KEY']
 client = CosmosClient(url, credential=key)
 database_name = 'CuvrisDB'
@@ -91,7 +96,7 @@ icd_ten_diagnosis_code="K02.9"
 is_preventive_or_routine=""
 
 
-beginSentence = ""
+beginSentence = "Hello There"
 
 
 class LlmClient:
@@ -99,7 +104,13 @@ class LlmClient:
         self.use_case_id = use_case_id
         self.use_case_parameters = use_case_parameters
         self.answers = ""  # Initialize answers attribute
-       
+        self.session = {}
+        self.session['history'] = []
+        self.session['step'] = 1
+        self.session['start_time'] = datetime.datetime.now()
+        self.start = 0
+        self.prompt = self.prepare_prompt()
+        self.output = {}
         
 
         self.client = AzureOpenAI(
@@ -111,7 +122,6 @@ class LlmClient:
             # api_version="2024-02-01",
             
         )
-        
     
     def draft_begin_message(self):
         return {
@@ -124,19 +134,21 @@ class LlmClient:
     def convert_transcript_to_openai_messages(self, transcript):
         messages = []
         for utterance in transcript:
-            if utterance["role"] == "agent":
+            if utterance["role"] == "caller":
                 messages.append({
                     "role": "assistant",
-                    "content": utterance['content']
+                    "content": utterance['message']
                 })
             else:
                 messages.append({
                     "role": "user",
-                    "content": utterance['content']
+                    "content": utterance['message']
                 })
         return messages
+            
+    
 
-    def prepare_prompt(self, request):
+    def prepare_prompt(self):
 
 
 
@@ -256,6 +268,37 @@ class LlmClient:
 
         7. " Let me have a quick recap. (Provide all the information you have noted from {self.answers}). Right?"
         >
+
+
+        During this Call you have to fill value of some Variables:
+        Variables:
+            member_has_account
+            plan_type
+            benefit_period_type
+            benefit_period_start_date
+            benefit_period_end_date
+            plan_is_active
+            future_termination_date
+            provider_in_network
+            deductible
+            copay
+            co_insurance
+            needs_pcp_referral
+            has_add_on_dental_benefit
+            is_insurance_primary
+            is_prior_authorisation_required
+            is_preexisting_conditions_covered
+            has_carved_out_dental_benefit
+            carved_out_dental_benefit_name
+            carved_out_dental_benefit_phone_no
+            has_pbm
+            pbm_name
+            pbm_phone_no
+            separate_benefit_dept_phone_no
+            separate_preauth_dept_phone_no
+            requires_member_followup
+
+        If you find value for any above variables during the call Use the fill_variable function
         """
 
         end_conversation = f"""
@@ -303,19 +346,19 @@ Rephrase if you have to reiterate a point.  \n- [Reply with emotions]: You have 
        
             
         }]
-        transcript_messages = self.convert_transcript_to_openai_messages(request['transcript'])
-        for message in transcript_messages:
-            prompt.append(message)
+        # transcript_messages = self.convert_transcript_to_openai_messages(request['transcript'])
+        # for message in transcript_messages:
+        #     prompt.append(message)
 
-        if request['interaction_type'] == "reminder_required":
-            prompt.append({
-                "role": "user",
-                "content": "(Now the user has not responded in a while, you would say:)",
-            })
+        # if request['interaction_type'] == "reminder_required":
+        #     prompt.append({
+        #         "role": "user",
+        #         "content": "(Now the user has not responded in a while, you would say:)",
+        #     })
         return prompt
+    
 
-    
-    
+
     # Step 1: Prepare the function calling definition to the prompt
     def prepare_functions(self):
 
@@ -337,553 +380,234 @@ Rephrase if you have to reiterate a point.  \n- [Reply with emotions]: You have 
                     },
                 },
             },
-            
-            # {
-            #     "type": "function",
-            #     "function": {
-            #         "name": "Provider_verification",
-            #         "description": "Verify the healthcare provider",
-            #         "parameters": {
-            #             "type": "object",
-            #             "properties": {
-            #                 "npi_id_or_tax_id": {
-            #                     "type": "integer",
-            #                     "description": "Provider’s NPI or Tax ID",
-            #                 },
-            #                 "name": {
-            #                     "type": "string",
-            #                     "description": "Provider’s name under the NPI or Tax ID provided",
-            #                 },
-            #                 "state": {
-            #                     "type": "string",
-            #                     "description": "state where the NPI or Tax ID is enrolled or active..",
-            #                 }
-            #             },
-            #             "required": ["npi_id_or_tax_id","name","state"],
-            #         },
-            #     },
-            # },
-            # {
-            #     "type": "function",
-            #     "function": {
-            #         "name": "Provider_verification",
-            #         "description": "Verify the healthcare provider",
-            #         "parameters": {
-            #             "type": "object",
-            #             "properties": {
-            #                 "npi_id_or_tax_id": {
-            #                     "type": "integer",
-            #                     "description": "Provider’s NPI or Tax ID",
-            #                 },
-            #                 "name": {
-            #                     "type": "string",
-            #                     "description": "Provider’s name under the NPI or Tax ID provided",
-            #                 },
-            #                 "state": {
-            #                     "type": "string",
-            #                     "description": "state where the NPI or Tax ID is enrolled or active..",
-            #                 }
-            #             },
-            #             "required": ["npi_id_or_tax_id","name","state"],
-            #         },
-            #     },
-            # },
-            # {
-            #     "type": "function",
-            #     "function": {
-            #         "name": "get_contact_information",
-            #         "description": "Get user policy information.",
-            #         "parameters": {
-            #             "type": "object",
-            #             "properties": {
-            #                 "number": {
-            #                     "type": "string",
-            #                     "description": "mobile number of the user.(only provide the number without using '-' '('')')",
-            #                 },
-            #                 "query": {
-            #                     "type": "string",
-            #                     "description":" users query related to the Health Insurance Plan Information.",
-            #                 }
-            #             },
-            #             "required": ["number","query"],
-            #         },
-            #     },
-            # },
-            # {
-            #     "type": "function",
-            #     "function": {
-            #         "name": "update_contact_information",
-            #         "description": "Get user policy information.",
-            #         "parameters": {
-            #             "type": "object",
-            #             "properties": {
-            #                 "number": {
-            #                     "type": "string",
-            #                     "description": "mobile number of the user.(only provide the number without using '-' '('')') ",
-            #                 },
-            #                 "first_name":{
-            #                     "type": "string",
-            #                     "description": "New first name of the user.",
-            #                 },
-            #                 "last_name":{
-            #                     "type": "string",
-            #                     "description": "New last name of the user.",
-            #                 },
-            #                 "email": {
-            #                     "type": "string",
-            #                     "description": "New email of the user.",
-            #                 }
-            #             },
-            #             "required": ["number","first_name","last_name","email"],
-            #         },
-            #     },
-            # },
-            # {
-            #     "type": "function",
-            #     "function": {
-            #         "name": "answer_insurance_information",
-            #         "description": "Insurance Information based on user query.",
-            #         "parameters": {
-            #             "type": "object",
-            #             "properties": {
-            #                 "message": {
-            #                     "type": "string",
-            #                     "description": "The message(answer) based on the user question related to the Health Insurance Plan Information.",
-            #                 },
-            #             },
-            #             "required": ["message"],
-            #         },
-            #     },
-            # },
-        
-            
+            {
+                "type": "function",
+                "function": {
+                    "name": "fill_variable",
+                    "description": "Fills the value of a specified variable during the call based on the information obtained, only if the variable is from the predefined list of allowed variables.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "variable_name": {
+                                "type": "string",
+                                "description": "The name of the variable to be filled. This should match one of the predefined allowed variable names."
+                            },
+                            "variable_value": {
+                                "type": "string",
+                                "description": "The value to assign to the specified variable."
+                            }
+                        },
+                        "required": ["variable_name", "variable_value"]
+                    }
+                }
+            }
         ]
         return functions
     
-   
                    
 
-    def draft_response(self, request):
-        
-        prompt = self.prepare_prompt(request)
-        func_call = {}
-        func_arguments = ""
-        deployment_name = os.environ['AZURE_OPENAI_DEPLOYMENT_NAME']
-        stream = self.client.chat.completions.create(
-            
-          
-            model=deployment_name,
-            # model="cuvrisai",
-            messages=prompt,
-            stream=True,
-            # Step 2: Add the function into your request
-            tools=self.prepare_functions(),
-            tool_choice="auto"
-        )
-    
-        for chunk in stream:
-            
-            # Step 3: Extract the functions
-            if len(chunk.choices) == 0:
-                continue
-            if chunk.choices[0].delta.tool_calls:
-                tool_calls = chunk.choices[0].delta.tool_calls[0]
-                if tool_calls.id:
-                    if func_call:
-                        # Another function received, old function complete, can break here.
-                        break
-                    func_call = {
-                        "id": tool_calls.id,
-                        "func_name": tool_calls.function.name or "",
-                        "arguments": {},
-                    }
-                else:
-                    # append argument
-                    func_arguments += tool_calls.function.arguments or ""
-            
-            # Parse transcripts
-            if chunk.choices[0].delta.content:
-                response_content = chunk.choices[0].delta.content
+    def draft_response(self, request, session_id):
+        try:
+            agent_text = ' '
+            for transcript in request['transcript']:
+                if transcript['role'] == 'user' and transcript['words'][0]['start'] > self.start:
+                    agent_text += transcript['content'] + ' '
+                    self.start = transcript['words'][0]['start']
 
-                if chunk.choices[0].delta.role == "agent":
-                    self.answers += f"Agent: {response_content}\n"
-                else:
-                    self.answers += f"User: {response_content}\n"
-                # self.answers += chunk.choices[0].delta.content+""
-                user_query = chunk.choices[0].delta.content
+            if agent_text != ' ':
+                self.session['history'].append({"role": "agent", "message": agent_text, "time": datetime.datetime.now()})
+                self.session['last_provider_question'] = agent_text
+            # prompt = self.prepare_prompt(request)
+            prompt = self.prompt[0]
+            func_call = {}
+            func_arguments = ""
+            deployment_name = model_name
+            messages = self.convert_transcript_to_openai_messages(self.session['history'])
+            if request['interaction_type'] == "reminder_required":
+                messages.append({
+                    "role": "user",
+                    "content": "(Now the user has not responded in a while, you would say:)",
+                })
+            messages.insert(0, prompt)
+            stream = self.client.chat.completions.create(
+                model=deployment_name,
+                messages=messages,
+                stream=True,
+                tools=self.prepare_functions(),
+                tool_choice="auto"
+            )
+
+            for chunk in stream:                
+                # Step 3: Extract the functions
+                if len(chunk.choices) == 0:
+                    continue
+                if chunk.choices[0].delta.tool_calls:
+
+                    tool_calls = chunk.choices[0].delta.tool_calls[0]
+
+                    if tool_calls.id:
+
+                        if func_call:
+                            # Another function received, old function complete, can break here.
+                            break
+                        func_call = {
+                            "id": tool_calls.id,
+                            "func_name": tool_calls.function.name or "",
+                            "arguments": {},
+                        }
+                    else:
+                        # append argument
+
+                        func_arguments += tool_calls.function.arguments or ""
                 
+                # Parse transcripts
+                if chunk.choices[0].delta.content:
+                                        
+                    response_content = chunk.choices[0].delta.content
+
+                    if chunk.choices[0].delta.role == "agent":
+
+                        self.answers += f"Agent: {response_content}\n"
+                        
+                    else:
+
+                        self.answers += f"User: {response_content}\n"
+
+                    # self.answers += chunk.choices[0].delta.content+""
+                    user_query = chunk.choices[0].delta.content
+                    
+                    self.session['step'] += 1
+
+                    yield {
+                        "response_id": request['response_id'],
+                        "content": chunk.choices[0].delta.content,
+                        "content_complete": False,
+                        "end_call": False,
+                    }
+
+            # Step 4: Call the functions
+            if func_call:
+                
+                
+                if func_call['func_name'] == "end_call":
+
+                    func_call['arguments'] = json.loads(func_arguments)
+
+                    # self.summarize_transcript(request['transcript'])
+                    # print("🤢🤢🤢🤢", request['transcript'])
+                    yield {
+                        "response_id": request['response_id'],
+                        "content": func_call['arguments']['message'],
+                        "content_complete": True,
+                        "end_call": True,
+                    }
+                if func_call['func_name'] == "fill_variable":
+                    arguments = json.loads(func_arguments)
+                    self.output[arguments['variable_name']] = arguments['variable_value']
+
+                    # self.summarize_transcript(request['transcript'])
+                    # print("🤢🤢🤢🤢", request['transcript'])
+                    
+            else:
+
+                # No functions, complete response
                 yield {
                     "response_id": request['response_id'],
-                    "content": chunk.choices[0].delta.content,
-                    "content_complete": False,
+                    "content": "",
+                    "content_complete": True,
                     "end_call": False,
                 }
-        
-        # Step 4: Call the functions
-        if func_call:
-            print("🤬", func_call)
-            
-        
-            if func_call['func_name'] == "end_call":
-                func_call['arguments'] = json.loads(func_arguments)
-                # self.summarize_transcript(request['transcript'])
-                # print("🤢🤢🤢🤢", request['transcript'])
-                yield {
-                    "response_id": request['response_id'],
-                    "content": func_call['arguments']['message'],
-                    "content_complete": True,
-                    "end_call": True,
-                }
+
+        except Exception as e:
+            print(e, "Exceptionnnnnnnnnnnnnnnnnnnnnn")
 
 
 
-            # elif func_call['func_name'] == "Provider_verification":
-            #     func_call['arguments'] = json.loads(func_arguments)
-            #     parameter_response_gpt = json.loads(func_arguments)
-            #     print("🤬🤬🤬", parameter_response_gpt)
-                
-            #     name = provider_name
-            #     npi=provider_npi
-            #     state = provider_state
-                
-               
-            #     if name and npi and state:
-            #         yield {
-            #             "response_id": request['response_id'],
-            #             "content": "",
-            #             "content_complete": True,
-            #             "end_call": False,
-            #         }
-                    
-                    
-              
-
-                   
-            
-        #     # elif func_call['func_name'] == "get_policy_query":
-        #     #     func_call['arguments'] = json.loads(func_arguments)
-        #     #     parameter_response_gpt = json.loads(func_arguments)
-        #     #     print("🤬🤬🤬", parameter_response_gpt)
-            
-
-        #     #     yield {
-        #     #         "response_id": request['response_id'],
-        #     #         "content": "Please wait while I check your information.",
-        #     #         "content_complete": False,
-        #     #         "end_call": False,
-        #     #     }
 
 
-        #     #     try:
 
-        #     #         url = f"https://www.zohoapis.{self.zoho_location}/crm/v2/Contacts/search?phone=" + gpt_parameter_response['number']
-        #     #         response = requests.get(url, headers=headers)
+    def construct_prompt(self, session) -> str:
+        step = session['step']
+        history = session['history']
+        prompt = f"""You are an AI agent tasked with conducting an eligibility verification call with a healthcare provider. To assist you in this process, I am providing you with the following information:
 
-        #     #         if response.status_code == 200:
-        #     #             data_json = response.json()
-        #     #             print("🧑‍⚖️🧑‍⚖️🧑‍⚖️🧑‍⚖️", data_json)
-                      
-        #     #             yield {
-        #     #                 "response_id": request['response_id'],
-        #     #                 "content": self.generate_info_string(data_json),
-        #     #                 "content_complete": False,
-        #     #                 "end_call": False,
-        #     #             }
+<user_info>
+{self.use_case_parameters}
+</user_info>
 
-        #     #             yield {
-        #     #                 "response_id": request['response_id'],
-        #     #                 "content": f"Thank you, Do you need any other information? Please let me know.",
-        #     #                 "content_complete": True,
-        #     #                 "end_call": False,
-        #     #             }
+<provider_last_response>
+{session['last_provider_question']}
+</provider_last_response>
 
-                    
+Please carefully review the user information, conversation history, and the provider's last response. Using this information, follow the verification script step-by-step to guide your responses. Remember, you are playing the role of the agent calling the provider to do the verification.
 
-            
-        #     #         else:
-        #     #             yield {
-        #     #                 "response_id": request['response_id'],
-        #     #                 "content": f"I'm sorry, but I couldn't find any information associated with the phone number {gpt_parameter_response['number']}. "
-        #     #                         f"Could you please confirm if the phone number is correct?",
-        #     #                 "content_complete": True,
-        #     #                 "end_call": False,
-        #     #             }
-                            
+Here is the verification script for your reference:
+
+[Eligibility Verification] Sample Phone Call Transcript
+Provider: Thank you for calling. This is Sarah. Whom do I have the pleasure of speaking with?
+Amy: Hi, Sarah. This is Amy, I'm calling on behalf of Dr. Green's Dental Practice.
+Provider: Great, Amy. Do you have your provider's NPI or Tax ID?
+Amy: Yes, I have the NPI. It's 1234567893.
+Provider: And can you confirm Dr. Smith's name under the NPI and the state where it's enrolled or active?
+Amy: It's Dr. Lucas Green, and the NPI is enrolled in Illinois.
+Provider: Perfect, Dr. Lucas Green is verified. Do you have the member's ID? Can you also confirm the name and date of birth, please?
+Amy: Sure, the Policy ID Number is JPU666X15903, and the member's name is Michael Johnson, born on February 4th, 1993.
+Provider: Thank you, Michael Johnson is successfully identified. How can I help you today?
+Amy: I need to verify Michael's eligibility. Can you check what type of plan he has and if it runs per calendar year or per plan year? And if it is still active or has any future term date.
+Provider: Michael's plan is a PPO, and it runs per calendar year, from January to December. It is currently active, with no future termination date.
+Amy: What is Michael's plan and is Dr. Smith In-network?
+Provider: The plan type is PPO. And Dr. Smith is in-network with Michael's plan.
+Amy: Are you the primary for this member?
+Provider: It seems like Michael needs to call us to update his Coordination of Benefits, it shows "Unknown" which means we have no information if we are the only insurance that he has or if he has any other insurance.
+Amy: Does the Pre-existing condition apply?
+Provider: Yes, Pre-existing conditions do apply.
+Amy: So, the plan covers pre-existing conditions, right?
+Provider: Yes, it does cover pre-existing conditions.
+Amy: Does the member have a carved out Dental benefit?
+Provider: None, the member has no carved out benefit for Dental.
+Amy: How about a Pharmacy Benefit Manager?
+Provider: Yes, there is a Pharmacy Benefit Manager for this plan. You may reach them at 1-800-PHARMACY.
+Amy: Do you have a separate department for the benefit and prior authorization?
+Provider: Yes, you may call these numbers: 1-800-BENEFITS for benefits and 1-800-AUTH for prior authorization.
+Amy: Let me have a quick recap. Dr. Smith is in-network under a PPO plan that runs per calendar year and is currently active. Coordination of Benefits status is unknown, pre-existing conditions are covered, no carved out dental benefits, a Pharmacy Benefit Manager is available, and there are separate numbers for benefits and prior authorization. Right?
+Provider: That's all correct!
+Amy: Thank you!
+Provider: You're welcome! Have a great day.
+End of call
+
+Based on the provided information and the verification script, output your next response in the verification process.
+**Important**: In the Provided Script You are not Provider so just follow the role of Amy
+                """
+        # Introduction and context setup for OpenAI
+        # history_texts = [entry['message'] for entry in history]
+        # prompt = f"Agent conversation history:\n{' '.join(history_texts)}\n\n"
+
+        # # Agent introduces the purpose of the call
+        # if step == 1:
+        #     prompt += "You are an agent calling a healthcare provider's office to verify a member's eligibility and benefits. "
+        #     prompt += "Your task is to provide the necessary member details and respond accurately to the provider's questions to verify information.\n"
+        #     prompt += "Start by introducing yourself and explaining the purpose of the call.\n\n"
+        #     prompt += "Agent: Good morning, this is [Your Name] calling from [Your Company]. I am calling to verify the eligibility and benefit details for one of our members under your care.\n"
+
+        # # Dynamics of conversation based on what the provider's agent asks
+        # if 'last_provider_question' in session:
+        #     # Handling of provider's questions based on the last interaction recorded
+        #     provider_question = session['last_provider_question']
+        #     prompt += f"Provider's last question: {provider_question}\n"
+        #     prompt += "Respond to the provider's question with the necessary details. For example:\n"
+        #     if 'NPI' in provider_question or 'provider details' in provider_question.lower():
+        #         prompt += "Agent: The provider's NPI is [NPI Number], and the name under the NPI is [Provider's Name]. The state of registration is [State].\n"
+        #     elif 'member ID' in provider_question or 'date of birth' in provider_question.lower():
+        #         prompt += "The member’s Policy ID Number is [Policy ID], their full name is [Member's Name], and their date of birth is [DOB].\n"
+        #     else:
+        #         prompt += "Could you please specify what particular details you need for the verification?\n"
+        # else:
+        #     # Initial interaction if no questions have been recorded yet
+        #     prompt += "Wait for the provider to ask the first question. Prepare to provide details such as the member's policy ID, name, date of birth, etc.\n"
+
+        # # Suggest how to continue the conversation based on the playbook
+        # prompt += "\nContinue the conversation, ensuring you provide accurate and complete responses to verify the member's information.\n"
+
+        return prompt
+
     
-
-        #     #     except Exception as e:
-        #     #         yield {
-        #     #                 "response_id": request['response_id'],
-        #     #                 "content": f"Sorry I could not find your information. Do you need any other information? Please let me know.",
-        #     #                 "content_complete": True,
-        #     #                 "end_call": False,
-        #     #             }
-        #     #         print("Error:", e)
-
-
-
-        #     elif func_call['func_name'] == "get_contact_information":
-
-
-        #         print("🙏🙏")
-        #         func_call['arguments'] = json.loads(func_arguments)
-        #         print(func_arguments)
-        #         gpt_parameter_response = json.loads(func_arguments)
-        #         print("🤬🤬", gpt_parameter_response)
-                
-                
-        #         yield {
-        #             "response_id": request['response_id'],
-        #             "content": "Please wait while I check your information.",
-        #             "content_complete": False,
-        #             "end_call": False,
-        #         }
-
-
-        #         try:
-
-        #             url = f"https://www.zohoapis.{self.zoho_location}/crm/v2/Contacts/search?phone=" + gpt_parameter_response['number']
-        #             response = requests.get(url, headers=headers)
-
-        #             if response.status_code == 200:
-        #                 data_json = response.json()
-        #                 print("🧑‍⚖️🧑‍⚖️🧑‍⚖️🧑‍⚖️", data_json)
-
-
-        #                 # if(gpt_parameter_response['query'] not in ['owner', 'address', 'phone', 'Primary_Doctor', 'Date_of_Birth']):
-        #                 #     yield {
-        #                 #         "response_id": request['response_id'],
-        #                 #         "content": self.generate_info_string(data_json),
-        #                 #         "content_complete": False,
-        #                 #         "end_call": False,
-        #                 #     }
-        #                 #     yield {
-        #                 #         "response_id": request['response_id'],
-        #                 #         "content": f"Thank you, Do you need any other information? Please let me know.",
-        #                 #         "content_complete": True,
-        #                 #         "end_call": False,
-        #                 #     }
-        #                 # else:
-        #                 yield {
-        #                     "response_id": request['response_id'],
-        #                     "content": self.generate_info_string(data_json,gpt_parameter_response['query']),
-        #                     "content_complete": False,
-        #                     "end_call": False,
-        #                 }
-        #                 yield {
-        #                     "response_id": request['response_id'],
-        #                     "content": f"Thank you, Do you need any other information? Please let me know.",
-        #                     "content_complete": True,
-        #                     "end_call": False,
-        #                 }
-                      
-        #                 # yield {
-        #                 #     "response_id": request['response_id'],
-        #                 #     "content": self.get_policy_query(data_json, gpt_parameter_response['query']),
-        #                 #     "content_complete": False,
-        #                 #     "end_call": False,
-        #                 # }
-        #                 # yield {
-        #                 #     "response_id": request['response_id'],
-        #                 #     "content": self.generate_info_string(data_json),
-        #                 #     "content_complete": False,
-        #                 #     "end_call": False,
-        #                 # }
-
-
-
-
-
-        #                 # yield {
-        #                 #     "response_id": request['response_id'],
-        #                 #     "content": f"Thank you, Do you need any other information? Please let me know.",
-        #                 #     "content_complete": True,
-        #                 #     "end_call": False,
-        #                 # }
-
-                    
-
-                
-        #         # else:
-        #         #     print("🙏🙏")
-        #         #     func_call['arguments'] = json.loads(func_arguments)
-        #         #     gpt_parameter_response = json.loads(func_arguments)
-        #         #     print("🤬🤬", gpt_parameter_response)
-                    
-        #         #     yield {
-        #         #         "response_id": request['response_id'],
-        #         #         "content": "Please wait while I check your information.",
-        #         #         "content_complete": False,
-        #         #         "end_call": False,
-        #         #     }
-                    
-        #             # try:
-        #             #     url = f"https://www.zohoapis.{self.zoho_location}/crm/v2/Contacts/search?phone=" + gpt_parameter_response['number']
-        #             #     response = requests.get(url, headers=headers)
-
-        #             #     if response.status_code == 200:
-        #             #         data_json = response.json()
-        #             #         print("🧑‍⚖️🧑‍⚖️🧑‍⚖️🧑‍⚖️", data_json)
-        #             #         yield {
-        #             #             "response_id": request['response_id'],
-        #             #             "content": self.generate_info_string(data_json),
-        #             #             "content_complete": False,
-        #             #             "end_call": False,
-        #             #         }
-
-        #                     # Check if user provided keywords
-        #                     # query_keywords = ['Owner', 'Mailing_Street', 'Mailing_City', 'Mailing_State', 'Mailing_Zip', 'Phone', 'Primary_Doctor', 'Date_of_Birth', 'Gender', 'Coverage_Type', 'Policy_Number', 'Effective_Date', 'Term_Date', 'Description']
-        #                     # query_new = any(keyword in gpt_parameter_response for keyword in query_keywords)
-                            
-        #                     # if query_new:
-                                
-
-                           
-
-                        
-        #                     # gpt_parameter_response = json.loads(func_arguments)
-
-        #                     # query_new = gpt_parameter_response.get('Owner' or 'Mailing_Street' or 'Mailing_City' or 'Mailing_State' or 'Mailing_Zip' or 'Phone' or 'Primary_Doctor' or 'Date_of_Birth' or 'Gender' or 'Coverage_Type' or 'Policy_Number' or 'Effective_Date' or 'Term_Date' or 'Description', '')
-        #                     # if(query_new != None):
-                            
-
-        #                     #    yield {
-        #                     #     "response_id": request['response_id'],
-        #                     #     "content": self.generate_info_string(data_json,query_new),
-        #                     #     "content_complete": True,
-        #                     #     "end_call": False,
-        #                     #  }
-        #                     # else:
-
-        #                     #     yield {
-        #                     #         "response_id": request['response_id'],
-        #                     #         "content": f"Thank you, Do you need any other information? Please let me know.",
-        #                     #         "content_complete": True,
-        #                     #         "end_call": False,
-        #                     #     }
-                                                    
-                        
-        #                     # Prompt the user to confirm the phone number
-        #             else:
-        #                 yield {
-        #                     "response_id": request['response_id'],
-        #                     "content": f"I'm sorry, but I couldn't find any information associated with the phone number {gpt_parameter_response['number']}. "
-        #                             f"Please provide correct phone number",
-        #                     "content_complete": True,
-        #                     "end_call": False,
-        #                 }
-                            
-    
-
-        #         except Exception as e:
-        #             yield {
-        #                     "response_id": request['response_id'],
-        #                     "content": f"Sorry I could not find your information. Do you need any other information? Please let me know.",
-        #                     "content_complete": True,
-        #                     "end_call": False,
-        #                 }
-        #             print("Error:", e)
-
-                    
-                    
-        #     elif func_call['func_name'] == "update_contact_information":
-            
-        #         print("🙏🙏")
-        #         func_call['arguments'] = json.loads(func_arguments)
-        #         parameter_response_gpt = json.loads(func_arguments)
-        #         print("🤬🤬", parameter_response_gpt)
-                
-        #         yield {
-        #             "response_id": request['response_id'],
-        #             "content": "Please wait while I update your information.",
-        #             "content_complete": False,
-        #             "end_call": False,
-        #         }
-                
-                
-        #         try:
-        #             url = f"https://www.zohoapis.{self.zoho_location}/crm/v2/Contacts/search?phone=" + parameter_response_gpt['number']
-        #             response = requests.get(url, headers=headers)
-
-        #             if response.status_code == 200:
-        #                 data_json = response.json()
-        #                 id = data_json['data'][0]['id']
-                        
-        #                 new_url = f"https://www.zohoapis.{self.zoho_location}/crm/v6/Contacts/" + id
-                        
-        #                 if 'email' in parameter_response_gpt and parameter_response_gpt['email']:
-        #                     data = {
-        #                         "data": [
-        #                             {
-        #                                 "Email": parameter_response_gpt['email']
-        #                             }
-        #                         ]
-        #                     }
-        #                     new_response = requests.put(new_url, headers=headers, data=json.dumps(data))
-                            
-        #                     if new_response.status_code == 200:
-        #                         yield {
-        #                             "response_id": request['response_id'],
-        #                             "content": "Your email has been updated. Do you need any other information? Please let me know.",
-        #                             "content_complete": True,
-        #                             "end_call": False,
-        #                         }
-                                
-        #                 if 'first_name' in parameter_response_gpt and 'last_name' in parameter_response_gpt:
-        #                     data = {
-        #                         "data": [
-        #                             {
-        #                                 "First_Name": parameter_response_gpt['first_name'],
-        #                                 "Last_Name": parameter_response_gpt['last_name']
-        #                             }
-        #                         ]
-        #                     }
-        #                     new_response = requests.put(new_url, headers=headers, data=json.dumps(data))
-                            
-        #                     if new_response.status_code == 200:
-        #                         yield {
-        #                             "response_id": request['response_id'],
-        #                             "content": "Your name has been updated. Do you need any other information? Please let me know.",
-        #                             "content_complete": True,
-        #                             "end_call": False,
-        #                         }
-                                
-        #             else:
-        #                 yield {
-        #                     "response_id": request['response_id'],
-        #                     "content": f"Sorry I could not find your information. Do you need any other information? Please let me know.",
-        #                     "content_complete": True,
-        #                     "end_call": False,
-        #                 }
-        #                 print("Failed to retrieve contact details", response.status_code)
-                        
-        #         except Exception as e:
-        #             yield {
-        #                     "response_id": request['response_id'],
-        #                     "content": f"Sorry I could not answer that could you please contact to live support. Do you need any other information? Please let me know.",
-        #                     "content_complete": True,
-        #                     "end_call": False,
-        #                 }
-        #             print("Error:", e)
-                
-        #     elif func_call['func_name'] == "answer_insurance_information":
-        #         func_call['arguments'] = json.loads(func_arguments)
-        #         print("🤬🤬", func_call['arguments'])
-        #         print("🤬🤬", func_call['arguments']['message'])
-
-        #         yield {
-        #             "response_id": request['response_id'],
-        #             "content": func_call['arguments']['message'],
-        #             "content_complete": True,
-        #             "end_call": False,
-        #         }
-
-                    
-        else:
-            # No functions, complete response
-            yield {
-                "response_id": request['response_id'],
-                "content": "",
-                "content_complete": True,
-                "end_call": False,
-            }
